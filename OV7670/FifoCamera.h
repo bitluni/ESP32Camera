@@ -1,0 +1,286 @@
+#include "Arduino.h"
+#include "Fifo.h"
+
+template<class I2C, int RRST, int WRST, int RCK, int WR, int D0, int D1, int D2, int D3, int D4, int D5, int D6, int D7>
+class FifoCamera
+{
+  static const int ADDR = 0x42;
+  
+  static const int REG_COM1 = 0x04;
+  static const int REG_VREF = 0x03;
+  static const int REG_CLKRC = 0x11;
+  static const int REG_COM7 = 0x12;
+    static const int COM7_RGB = 0x04;
+  static const int REG_COM9 = 0x14;
+  static const int REG_COM10 = 0x15;
+  static const int REG_COM14 = 0x3E;
+  static const int REG_SCALING_DCWCTR = 0x72;
+  static const int REG_SCALING_PCLK_DIV = 0x73;
+  static const int REG_COM11 = 0x3B;
+  static const int REG_TSLB = 0x3A;
+  static const int REG_RGB444 = 0x8C;
+  static const int REG_COM15 = 0x40;
+    static const int COM15_RGB565 = 0x10;
+    static const int COM15_R00FF = 0xc0;
+  static const int REG_HSTART = 0x17;
+  static const int REG_HSTOP = 0x18;
+  static const int REG_HREF = 0x32;
+  static const int REG_VSTART = 0x19;
+  static const int REG_VSTOP = 0x1A;
+  static const int REG_COM3 = 0x0C;
+  static const int REG_MVFP = 0x1E;
+  static const int REG_COM13 = 0x3d;
+    static const int COM13_UVSAT = 0x40;
+
+  bool readingFrame = false;
+  bool writingFrame = false;
+
+  I2C &i2c;
+  Fifo<RRST, WRST, RCK, WR, D0, D1, D2, D3, D4, D5, D6, D7> fifo;
+  
+  public:
+  FifoCamera(I2C &_i2c)
+    :i2c(_i2c)
+  { 
+  }
+
+  void init()
+  {
+    fifo.init();
+    
+    //reset all registers to default
+    i2c.writeRegister(ADDR, REG_COM7, 0x80);
+  }
+
+  void testImage()
+  {
+    i2c.writeRegister(ADDR, 0x70, 0x4A | 0x80);
+    i2c.writeRegister(ADDR, 0x71, 0x35 | 0x80);
+  }
+
+  void prepareCapture()
+  {
+    fifo.writeReset();
+  }
+
+  void startCapture()
+  {
+    fifo.writeEnable();
+  }
+  
+  void stopCapture()
+  {
+    fifo.writeDisable();
+  }
+
+  void inline readFrame(unsigned char *frame, const int xres, const int yres, const int bytes)
+  {
+    fifo.readReset();
+    int i = 0;
+    for(int y = 0; y < yres; y++)
+      for(int x = 0; x < xres; x++)
+        for(int b = 0; b < bytes; b++)        
+          frame[i++] = fifo.readByte();
+  }
+
+//
+  void QQVGARGB565()
+  {
+
+    i2c.writeRegister(ADDR, REG_COM7, 0x80); /* reset to default values */
+    i2c.writeRegister(ADDR, REG_CLKRC, 0x80);
+    i2c.writeRegister(ADDR, REG_COM11, 0x0A);
+    i2c.writeRegister(ADDR, REG_TSLB, 0x04);
+
+    i2c.writeRegister(ADDR, REG_COM7, 0x04); /* output format: rgb */
+
+    i2c.writeRegister(ADDR, REG_RGB444, 0x00); /* disable RGB444 */
+    i2c.writeRegister(ADDR, REG_COM15, 0xD0); /* set RGB565 */
+    //i2c.writeRegister(ADDR, REG_COM15, 0b110000); /* set RGB565 */
+
+    /* not even sure what all these do, gonna check the oscilloscope and go
+     * from there... */
+    i2c.writeRegister(ADDR, REG_HSTART, 0x16);
+    i2c.writeRegister(ADDR, REG_HSTOP, 0x04);
+    i2c.writeRegister(ADDR, REG_HREF, 0x24);
+    i2c.writeRegister(ADDR, REG_VSTART, 0x02);
+    i2c.writeRegister(ADDR, REG_VSTOP, 0x7a);
+    i2c.writeRegister(ADDR, REG_VREF, 0x0a);
+    i2c.writeRegister(ADDR, REG_COM10, 0x02);
+    i2c.writeRegister(ADDR, REG_COM3, 0x04);
+    i2c.writeRegister(ADDR, REG_MVFP, 0x3f);
+
+    //ov7670_set(REG_MVFP, 0x27);
+
+    //ov7670_set(REG_COM14, 0x1b); // divide by 8
+    //ov7670_set(0x72, 0x33); // downsample by 8
+    //ov7670_set(0x73, 0xf3); // divide by 8
+
+
+    /* 160x120, i think */
+    i2c.writeRegister(ADDR, REG_COM14, 0x1a); // divide by 4
+    i2c.writeRegister(ADDR, 0x72, 0x22); // downsample by 4
+    i2c.writeRegister(ADDR, 0x73, 0xf2); // divide by 4
+
+    /* 320x240: */
+    //i2c.writeRegister(ADDR, REG_COM14, 0x19);
+    //i2c.writeRegister(ADDR, 0x72, 0x11);
+    //i2c.writeRegister(ADDR, 0x73, 0xf1);
+
+    i2c.writeRegister(ADDR, 0x13, 0xe7); //AWB on
+    i2c.writeRegister(ADDR, 0x6f, 0x9f); // Simple AWB
+
+    //saturation 0
+    i2c.writeRegister(ADDR, 0x4f, 0x80);
+    i2c.writeRegister(ADDR, 0x50, 0x80);
+    i2c.writeRegister(ADDR, 0x51, 0x00);
+    i2c.writeRegister(ADDR, 0x52, 0x22);
+    i2c.writeRegister(ADDR, 0x53, 0x5e);
+    i2c.writeRegister(ADDR, 0x54, 0x80);
+    i2c.writeRegister(ADDR, 0x58, 0x9e);
+  }
+
+
+
+  void RGBRaw()
+  {
+    const unsigned char RGBBeyerRAW[][2] = {{0x12, 0x80},
+    
+    {0x11, 0x01},
+    //{0x11, 0x01},
+    {0x3a, 0x04},
+    {0x12, 0x01},
+    {0x17, 0x12},
+    {0x18, 0x00},
+    {0x32, 0xb6},
+    {0x19, 0x02},
+    {0x1a, 0x7a},
+    {0x03, 0x00},
+    {0x0c, 0x00},
+    {0x3e, 0x00},
+    {0x70, 0x3a},
+    {0x71, 0x35},
+    {0x72, 0x11},
+    {0x73, 0xf0},
+    {0xa2, 0x02},
+    
+    {0x13, 0xe0},
+    {0x00, 0x00},
+    {0x10, 0x00},
+    {0x0d, 0x40},
+    {0x14, 0x38},
+    {0xa5, 0x07},
+    {0xab, 0x08},
+    {0x24, 0x95},
+    {0x25, 0x33},
+    {0x26, 0xe3},
+    {0x9f, 0x78},
+    {0xa0, 0x68},
+    {0xa1, 0x0b},
+    {0xa6, 0xd8},
+    {0xa7, 0xd8},
+    {0xa8, 0xf0},
+    {0xa9, 0x90},
+    {0xaa, 0x94},
+    {0x13, 0xe5},
+    
+    {0x0e, 0x61},
+    {0x0f, 0x4b},
+    {0x16, 0x02},
+    {0x21, 0x02},
+    {0x22, 0x91},
+    {0x29, 0x07},
+    {0x33, 0x03},
+    {0x35, 0x0b},
+    {0x37, 0x1c},
+    {0x38, 0x71},
+    {0x3c, 0x78},
+    {0x3d, 0x08},
+    {0x41, 0x3a},
+    {0x4d, 0x40},
+    {0x4e, 0x20},
+    {0x69, 0x55},
+    {0x6b, 0x4a},
+    {0x74, 0x19},
+    {0x76, 0x61},
+    {0x8d, 0x4f},
+    {0x8e, 0x00},
+    {0x8f, 0x00},
+    {0x90, 0x00},
+    {0x91, 0x00},
+    {0x96, 0x00},
+    {0x9a, 0x80},
+    {0xb0, 0x8c},
+    {0xb1, 0x0c},
+    {0xb2, 0x0e},
+    {0xb3, 0x82},
+    {0xb8, 0x0a},
+    
+    {0x43, 0x14},
+    {0x44, 0xf0},
+    {0x45, 0x34},
+    {0x46, 0x58},
+    {0x47, 0x28},
+    {0x48, 0x3a},
+    {0x59, 0x88},
+    {0x5a, 0x88},
+    {0x5b, 0x44},
+    {0x5c, 0x67},
+    {0x5d, 0x49},
+    {0x5e, 0x0e},
+    {0x6c, 0x0a},
+    {0x6d, 0x55},
+    {0x6e, 0x11},
+    {0x6f, 0x9f},
+    {0x6a, 0x40},
+    {0x01, 0x40},
+    {0x02, 0x40},
+    {0x13, 0xe7},
+    
+    {0x34, 0x11},
+    {0x92, 0x66},
+    {0x3b, 0x0a},
+    {0xa4, 0x88},
+    {0x96, 0x00},
+    {0x97, 0x30},
+    {0x98, 0x20},
+    {0x99, 0x20},
+    {0x9a, 0x84},
+    {0x9b, 0x29},
+    {0x9c, 0x03},
+    {0x9d, 0x4c},
+    {0x9e, 0x3f},
+    {0x78, 0x04},
+    
+    {0x79, 0x01},
+    {0xc8, 0xf0},
+    {0x79, 0x0f},
+    {0xc8, 0x20},
+    {0x79, 0x10},
+    {0xc8, 0x7e},
+    {0x79, 0x0b},
+    {0xc8, 0x01},
+    {0x79, 0x0c},
+    {0xc8, 0x07},
+    {0x79, 0x0d},
+    {0xc8, 0x20},
+    {0x79, 0x09},
+    {0xc8, 0x80},
+    {0x79, 0x02},
+    {0xc8, 0xc0},
+    {0x79, 0x03},
+    {0xc8, 0x40},
+    {0x79, 0x05},
+    {0xc8, 0x30},
+    {0x79, 0x26},
+    {0xff, 0xff}};
+    
+    for(int i = 0; RGBBeyerRAW[i][0] != 0xff; i++)
+      i2c.writeRegister(ADDR, RGBBeyerRAW[i][0], RGBBeyerRAW[i][1]);
+      
+    i2c.writeRegister(ADDR, REG_COM14, 0x1a); // divide by 4
+    i2c.writeRegister(ADDR, 0x72, 0x22); // downsample by 4
+    i2c.writeRegister(ADDR, 0x73, 0xf2); // divide by 4
+  }
+};
+

@@ -1,0 +1,23 @@
+<body>
+<input value="List Devices" type="button" onclick="listDevices();"><br>
+Serial port: <input value="COM12" type="text" onchange="changeSerial();"><br> 
+<select id="ports" onchange="changeSerial(this.value)"></select>
+<canvas id="canvas" />
+<script>
+function listDevices()
+{
+	chrome.serial.getDevices(function(ports) 
+	{
+		var options = "";
+	  for (var i = 0; i < ports.length; i++) {
+		options += "<option>" + ports[i].path + "</option>";
+	  }
+	});
+}
+
+function changeSerial()
+{
+	chrome.serial.connect("COM12", options, serialCallback);
+}
+</script>
+</body>
