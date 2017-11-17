@@ -55,14 +55,16 @@ void setup()
   Serial.println("Initialization...");
   i2c.init();
   camera.init();
-  //camera.testImage();
-  camera.QQVGARGB565();
+  //camera.QQVGARGB565();
+  camera.QQVGARGB();
   //camera.RGBRaw();
+  //camera.testImage();
   pinMode(VSYNC, INPUT);
   Serial.println("start");
   //attachInterrupt(digitalPinToInterrupt(VSYNC), vsyncInt, RISING);
   //xTaskCreatePinnedToCore(cameraTaskProc, "cam", 10000, NULL, 1, &cameraTask, 0);
   tft.initR(INITR_BLACKTAB);
+  tft.fillScreen(0);
 }
 
 void loop() 
@@ -81,8 +83,6 @@ void loop()
     for(int y = 0; y < 120; y++)
     {
       i = (y * 160 + x) << 1;
-      //int bayer = ((y >> 1) * 160 + (x >> 1)) * 4;
-
       /*
       unsigned short r = frame[i + 1] >> 3;
       unsigned short g = (frame[i] >> 5) | ((frame[i + 1] & 0b111) << 3);
@@ -90,7 +90,7 @@ void loop()
       unsigned short c = (r << 11) | (g << 5) | (b << 0);*/
       //tft.pushColor(c);
       tft.pushColor(frame[i] | (frame[i + 1] << 8));
-      //tft.pushColor((frame[bayer + 1] >> 2) << 5);
+      //tft.pushColor(frame[i + 1] >> 3);
     }
 /*  Serial.print("frame:");
   long size = XRES * YRES;
