@@ -13,6 +13,11 @@ const int RRST = 17;
 const int WRST = 16; 
 const int RCK = 4;
 const int WR = 0;
+//OE -> GND
+//PWDN not nonnected
+//HREF not connected
+//STR not connected
+//RST -> 3.3V 
 
 const int D0 = 13;
 const int D1 = 12;
@@ -24,30 +29,21 @@ const int D6 = 35;
 const int D7 = 34;
 
 const int TFT_CS = 2;
-const int TFT_RST = 0;
+const int TFT_RST = 0; //connected to EN on LOLIN32
 const int TFT_DC = 15;
-  
+//DIN <- MOSI 23
+//CLK <- SCK 18
+
 I2C<SIOD, SIOC> i2c;
 FifoCamera<I2C<SIOD, SIOC>, RRST, WRST, RCK, WR, D0, D1, D2, D3, D4, D5, D6, D7> camera(i2c);
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
 
-TaskHandle_t cameraTask;
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
 
 const int XRES = 160;
 const int YRES = 120;
 const int BYTES_PER_PIXEL = 2;
 const int frameSize = XRES * YRES * BYTES_PER_PIXEL;
 unsigned char frame[frameSize];
-
-void cameraTaskProc(void * params)
-{
-  while(true)
-  {
-    Serial.print('f');
-    Serial.print('d');
-    delay(1);
-  }
-}
 
 void setup() 
 {
@@ -56,13 +52,11 @@ void setup()
   i2c.init();
   camera.init();
   //camera.QQVGARGB565();
-  camera.QQVGARGB();
+  camera.QQVGARGB565();
   //camera.RGBRaw();
   //camera.testImage();
   pinMode(VSYNC, INPUT);
   Serial.println("start");
-  //attachInterrupt(digitalPinToInterrupt(VSYNC), vsyncInt, RISING);
-  //xTaskCreatePinnedToCore(cameraTaskProc, "cam", 10000, NULL, 1, &cameraTask, 0);
   tft.initR(INITR_BLACKTAB);
   tft.fillScreen(0);
 }
@@ -83,14 +77,7 @@ void loop()
     for(int y = 0; y < 120; y++)
     {
       i = (y * 160 + x) << 1;
-      /*
-      unsigned short r = frame[i + 1] >> 3;
-      unsigned short g = (frame[i] >> 5) | ((frame[i + 1] & 0b111) << 3);
-      unsigned short b = frame[i] & 0b11111;
-      unsigned short c = (r << 11) | (g << 5) | (b << 0);*/
-      //tft.pushColor(c);
       tft.pushColor(frame[i] | (frame[i + 1] << 8));
-      //tft.pushColor(frame[i + 1] >> 3);
     }
 /*  Serial.print("frame:");
   long size = XRES * YRES;
