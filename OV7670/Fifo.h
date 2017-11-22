@@ -68,6 +68,12 @@ class Fifo
       return b;
   }
 
+  static void inline skipByte()
+  {
+      digitalWrite(RCK, 1);
+      digitalWrite(RCK, 1);//just for the dalay
+      digitalWrite(RCK, 0);
+  }
   static void inline readBytes(unsigned char *buffer, int count)
   {
     for(int i = 0; i < count; i++)

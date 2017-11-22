@@ -72,9 +72,6 @@ class FifoCamera
   static const int REG_REG76 = 0x76;
   static const int ADCCTR0 = 0x20;
 
-  bool readingFrame = false;
-  bool writingFrame = false;
-
   I2C &i2c;
   Fifo<RRST, WRST, RCK, WR, D0, D1, D2, D3, D4, D5, D6, D7> fifo;
   
@@ -122,6 +119,18 @@ class FifoCamera
         for(int b = 0; b < bytes; b++)        
           frame[i++] = fifo.readByte();
   }
+
+  void inline readFrameOnlySecondByte(unsigned char *frame, const int xres, const int yres)
+  {
+    fifo.readReset();
+    int i = 0;
+    for(int y = 0; y < yres; y++)
+      for(int x = 0; x < xres; x++)
+      {
+          fifo.skipByte();
+          frame[i++] = fifo.readByte();
+      }       
+  }
   
   void writeRegisters(const unsigned char data[][2])
   {
@@ -140,14 +149,39 @@ class FifoCamera
     i2c.writeRegister(ADDR, 0x54, 0x80 + 0x20 * s);
     i2c.writeRegister(ADDR, 0x58, 0x9e);  //matrix signs
   }
+
+  void frameControl(int hStart, int hStop, int vStart, int vStop)
+  {
+    i2c.writeRegister(ADDR, REG_HSTART, hStart >> 3);
+    i2c.writeRegister(ADDR, REG_HSTOP,  hStop >> 3);
+    i2c.writeRegister(ADDR, REG_HREF, ((hStop & 0b111) << 3) | (hStart & 0b111));
+
+    i2c.writeRegister(ADDR, REG_VSTART, vStart >> 2);
+    i2c.writeRegister(ADDR, REG_VSTOP, vStop >> 2);
+    i2c.writeRegister(ADDR, REG_VREF, ((vStop & 0b11) << 2) | (vStart & 0b11));
+  }
+
+  void QQVGA()
+  {
+    //160x120 (1/4)
+    i2c.writeRegister(ADDR, REG_COM14, 0x1a); //pixel clock divided by 4, manual scaling enable, DCW and PCLK controlled by register
+    i2c.writeRegister(ADDR, SCALING_DCWCTR, 0x22); //downsample by 4
+    i2c.writeRegister(ADDR, SCALING_PCLK_DIV, 0xf2); //pixel clock divided by 4
+  }
+
+  void QQQVGA()
+  {
+    //80x60 (1/8)
+    i2c.writeRegister(ADDR, REG_COM14, 0x1b); //pixel clock divided by 8, manual scaling enable, DCW and PCLK controlled by register
+    i2c.writeRegister(ADDR, SCALING_DCWCTR, 0x33); //downsample by 8
+    i2c.writeRegister(ADDR, SCALING_PCLK_DIV, 0xf3); //pixel clock divided by 8
+  }
   
   void QQVGARGB565()
   {
     
     i2c.writeRegister(ADDR, REG_COM7, 0b10000000);  //all registers default
-    //delay(300);
-    //commonRegisterSetup();
-    
+        
     i2c.writeRegister(ADDR, REG_CLKRC, 0b10000000); //double clock
     i2c.writeRegister(ADDR, REG_COM11, 0b1000 | 0b10); //enable auto 50/60Hz detect + exposure timing can be less...
     i2c.writeRegister(ADDR, REG_TSLB, 0b100); //sequence UYVY
@@ -155,41 +189,70 @@ class FifoCamera
     i2c.writeRegister(ADDR, REG_COM7, 0b100); //RGB
     i2c.writeRegister(ADDR, REG_COM15, 0b11000000 | 0b010000); //RGB565
 
-    i2c.writeRegister(ADDR, REG_HSTART, 0x16);
-    i2c.writeRegister(ADDR, REG_HSTOP, 0x04);
-    i2c.writeRegister(ADDR, REG_HREF, 0x24);
+    frameControl(192, 48, 8, 488); //no clue why horizontal needs such strange values, vertical works ok
     
-    i2c.writeRegister(ADDR, REG_VSTART, 0x02);
-    i2c.writeRegister(ADDR, REG_VSTOP, 0x7a);
-    i2c.writeRegister(ADDR, REG_VREF, 0x0a);
+    i2c.writeRegister(ADDR, REG_COM10, 0x02); //VSYNC negative
+    i2c.writeRegister(ADDR, REG_COM3, 0x04);  //DCW enable
+    i2c.writeRegister(ADDR, REG_MVFP, 0x2b);  //mirror flip
+
+    QQVGA();
     
-    i2c.writeRegister(ADDR, REG_COM10, 0x02);
-    i2c.writeRegister(ADDR, REG_COM3, 0x04);
-    i2c.writeRegister(ADDR, REG_MVFP, 0x2b);
-        
-    //i2c.writeRegister(ADDR, REG_MVFP, 0);  //no mirror or flip
-
-    //i2c.writeRegister(ADDR, ADCCTR0, 0b1000); //ADC settings
-
-    //80x60 (1/8)
-    //i2c.writeRegister(ADDR, REG_COM14, 0x1b); 
-    //i2c.writeRegister(ADDR, 0x72, 0x33); 
-    //i2c.writeRegister(ADDR, 0x73, 0xf3);
-
-    //160x120 (1/4)
-    i2c.writeRegister(ADDR, REG_COM14, 0x1a); 
-    i2c.writeRegister(ADDR, SCALING_DCWCTR, 0x22); 
-    i2c.writeRegister(ADDR, SCALING_PCLK_DIV, 0xf2);     
-
     i2c.writeRegister(ADDR, 0xb0, 0x84);// no clue what this is but it's most important for colors
     saturation(0);
     i2c.writeRegister(ADDR, 0x13, 0xe7); //AWB on
     i2c.writeRegister(ADDR, 0x6f, 0x9f); // Simple AWB
   }
 
+  void QQQVGARGB565()
+  {
+    //still buggy
+    i2c.writeRegister(ADDR, REG_COM7, 0b10000000);  //all registers default
+        
+    i2c.writeRegister(ADDR, REG_CLKRC, 0b10000000); //double clock
+    i2c.writeRegister(ADDR, REG_COM11, 0b1000 | 0b10); //enable auto 50/60Hz detect + exposure timing can be less...
+    i2c.writeRegister(ADDR, REG_TSLB, 0b100); //sequence UYVY
+
+    i2c.writeRegister(ADDR, REG_COM7, 0b100); //RGB
+    i2c.writeRegister(ADDR, REG_COM15, 0b11000000 | 0b010000); //RGB565
+
+    frameControl(192, 48, 8, 488);
+    
+    i2c.writeRegister(ADDR, REG_COM10, 0x02); //VSYNC negative
+    i2c.writeRegister(ADDR, REG_COM3, 0x04);  //DCW enable
+    i2c.writeRegister(ADDR, REG_MVFP, 0x2b);  //mirror flip
+
+    QQQVGA();
+    
+    i2c.writeRegister(ADDR, 0xb0, 0x84);// no clue what this is but it's most important for colors
+    saturation(0);
+    i2c.writeRegister(ADDR, 0x13, 0xe7); //AWB on
+    i2c.writeRegister(ADDR, 0x6f, 0x9f); // Simple AWB
+  }
+
+  void QQVGAYUV()
+  {
+    i2c.writeRegister(ADDR, REG_COM7, 0b10000000);  //all registers default
+    
+    i2c.writeRegister(ADDR, REG_CLKRC, 0b10000000); //double clock
+    i2c.writeRegister(ADDR, REG_COM11, 0b1000 | 0b10); //enable auto 50/60Hz detect + exposure timing can be less...
+    i2c.writeRegister(ADDR, REG_TSLB, 0b100); //sequence UYVY
+
+    frameControl(192, 48, 8, 488);
+    
+    i2c.writeRegister(ADDR, REG_COM10, 0x02); //VSYNC negative
+    i2c.writeRegister(ADDR, REG_COM3, 0x04);  //DCW enable
+    i2c.writeRegister(ADDR, REG_MVFP, 0x2b);  //mirror flip
+
+    QQQVGA();
+    
+    i2c.writeRegister(ADDR, 0xb0, 0x84);// no clue what this is but it's most important for colors
+    i2c.writeRegister(ADDR, 0x13, 0xe7); //AWB on
+    i2c.writeRegister(ADDR, 0x6f, 0x9f); // Simple AWB
+  }
+
   void RGBRaw()
   {
-    const unsigned char RGBBeyerRAW[][2] = {{0x12, 0x80},
+    const unsigned char RGBBayerRAW[][2] = {{0x12, 0x80},
     
     {0x11, 0x80}, 
     //{0x11, 0x01},
@@ -319,23 +382,7 @@ class FifoCamera
     {0xc8, 0x30},
     {0x79, 0x26},
     {0xff, 0xff}};
-    writeRegisters(RGBBeyerRAW);
-      
-/*    i2c.writeRegister(ADDR, REG_HSTART, 0x16);
-    i2c.writeRegister(ADDR, REG_HSTOP, 0x04);
-    i2c.writeRegister(ADDR, REG_HREF, 0x24);
-    
-    i2c.writeRegister(ADDR, REG_VSTART, 0x02);
-    i2c.writeRegister(ADDR, REG_VSTOP, 0x7a);
-    i2c.writeRegister(ADDR, REG_VREF, 0x0a);*/
-    
-    i2c.writeRegister(ADDR, REG_COM10, 0x02);
-    i2c.writeRegister(ADDR, REG_COM3, 0x04);
-    i2c.writeRegister(ADDR, REG_MVFP, 0x2b);
-
-    i2c.writeRegister(ADDR, REG_COM14, 0x1a); // divide by 4
-    i2c.writeRegister(ADDR, 0x72, 0x22); // downsample by 4
-    i2c.writeRegister(ADDR, 0x73, 0xf2); // divide by 4*/
+    writeRegisters(RGBBayerRAW);
   }
 };
 

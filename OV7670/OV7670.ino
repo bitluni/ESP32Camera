@@ -5,16 +5,16 @@
 #include "I2C.h"
 #include "FifoCamera.h"
 
-const int VSYNC = 32;
+const int VSYNC = 32; //vertical sync
 const int SIOD = 21; //SDA
 const int SIOC = 22; //SCL
 
-const int RRST = 17;
-const int WRST = 16; 
-const int RCK = 4;
-const int WR = 0;
-//OE -> GND
-//PWDN not nonnected
+const int RRST = 17;  //read reset
+const int WRST = 16;  //write reset
+const int RCK = 4;    //read clock
+const int WR = 0;     //write flag
+//OE -> GND     (output enable always on since we control the read clock)
+//PWDN not nonnected  
 //HREF not connected
 //STR not connected
 //RST -> 3.3V 
@@ -28,9 +28,9 @@ const int D5 = 25;
 const int D6 = 35;
 const int D7 = 34;
 
-const int TFT_CS = 2;
+const int TFT_CS = 2; //chip select
 const int TFT_RST = 0; //connected to EN on LOLIN32
-const int TFT_DC = 15;
+const int TFT_DC = 15; //data/command pin
 //DIN <- MOSI 23
 //CLK <- SCK 18
 
@@ -39,8 +39,18 @@ FifoCamera<I2C<SIOD, SIOC>, RRST, WRST, RCK, WR, D0, D1, D2, D3, D4, D5, D6, D7>
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS,  TFT_DC, TFT_RST);
 
+#define QQVGA
+//#define QQQVGA
+
+#ifdef QQVGA
 const int XRES = 160;
 const int YRES = 120;
+#endif
+#ifdef QQQVGA
+const int XRES = 80;
+const int YRES = 60;
+#endif
+
 const int BYTES_PER_PIXEL = 2;
 const int frameSize = XRES * YRES * BYTES_PER_PIXEL;
 unsigned char frame[frameSize];
@@ -51,39 +61,64 @@ void setup()
   Serial.println("Initialization...");
   i2c.init();
   camera.init();
-  //camera.QQVGARGB565();
-  camera.QQVGARGB565();
+  
+  #ifdef QQVGA
+    camera.QQVGARGB565();
+  #endif
+  #ifdef QQQVGA
+    camera.QQQVGARGB565();
+  #endif
+  
+  //camera.QQVGAYUV();
   //camera.RGBRaw();
   //camera.testImage();
+  
   pinMode(VSYNC, INPUT);
   Serial.println("start");
   tft.initR(INITR_BLACKTAB);
   tft.fillScreen(0);
 }
 
-void loop() 
+void displayRGB565()
 {
-  while(!digitalRead(VSYNC));
-  while(digitalRead(VSYNC));
-  camera.prepareCapture();
-  camera.startCapture();
-  while(!digitalRead(VSYNC));
-  camera.stopCapture();
-
-  camera.readFrame(frame, XRES, YRES, BYTES_PER_PIXEL);
-  tft.setAddrWindow(0,0,119,159);
+  tft.setAddrWindow(0, 0, YRES - 1, XRES - 1);
   int i = 0;
-  for(int x = 0; x < 160; x++)
-    for(int y = 0; y < 120; y++)
+  for(int x = 0; x < XRES; x++)
+    for(int y = 0; y < YRES; y++)
     {
-      i = (y * 160 + x) << 1;
+      i = (y * XRES + x) << 1;
       tft.pushColor(frame[i] | (frame[i + 1] << 8));
-    }
-/*  Serial.print("frame:");
-  long size = XRES * YRES;
-  Serial.write((unsigned char*)&size, 4);
-  Serial.write((unsigned char*)frame, XRES * YRES);*/
-  /*
+      //tft.pushColor(((frame[i] | (frame[i + 1] << 8)) >> 1) & 0b111101111101111); //dimming to test for tft error
+    }  
+}
+
+void testTFT() //a small tft test output showing errors on my tft with bright colors
+{
+  tft.setAddrWindow(0, 0, 31, 63);
+  int i = 0;
+  for(int y = 0; y < 64; y++)
+    for(int x = 0; x < 32; x++)
+      tft.pushColor(x | y << 5);
+}
+
+void displayY8()
+{
+  tft.setAddrWindow(0, 0, YRES - 1, XRES - 1);
+  int i = 0;
+  for(int x = 0; x < XRES; x++)
+    for(int y = 0; y < YRES; y++)
+    {
+      i = y * XRES + x;
+      unsigned char c = frame[i];
+      unsigned short r = c >> 3;
+      unsigned short g = c >> 2;
+      unsigned short b = c >> 3;
+      tft.pushColor(r << 11 | g << 5 | b);
+    }  
+}
+
+void frameToSerial()
+{
   int i = 0;
   Serial.println("var frame=[");
   for(int y = 0; y < YRES; y+=1)
@@ -97,5 +132,25 @@ void loop()
     }
     Serial.println();
   }
-  Serial.println("];");*/
+  Serial.println("];");  
+}
+
+void loop() 
+{
+  while(!digitalRead(VSYNC));
+  while(digitalRead(VSYNC));
+  camera.prepareCapture();
+  camera.startCapture();
+  while(!digitalRead(VSYNC));
+  camera.stopCapture();
+
+  //color
+  camera.readFrame(frame, XRES, YRES, BYTES_PER_PIXEL);
+  displayRGB565();
+  
+  //testTFT();
+  
+  //b/w 
+  //camera.readFrameOnlySecondByte(frame, XRES, YRES);
+  //displayY8();
 }
