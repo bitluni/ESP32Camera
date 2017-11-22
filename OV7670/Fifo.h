@@ -71,7 +71,7 @@ class Fifo
   static void inline skipByte()
   {
       digitalWrite(RCK, 1);
-      digitalWrite(RCK, 1);//just for the dalay
+      delayMicroseconds(1);
       digitalWrite(RCK, 0);
   }
   static void inline readBytes(unsigned char *buffer, int count)

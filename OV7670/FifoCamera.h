@@ -243,7 +243,7 @@ class FifoCamera
     i2c.writeRegister(ADDR, REG_COM3, 0x04);  //DCW enable
     i2c.writeRegister(ADDR, REG_MVFP, 0x2b);  //mirror flip
 
-    QQQVGA();
+    QQVGA();
     
     i2c.writeRegister(ADDR, 0xb0, 0x84);// no clue what this is but it's most important for colors
     i2c.writeRegister(ADDR, 0x13, 0xe7); //AWB on
