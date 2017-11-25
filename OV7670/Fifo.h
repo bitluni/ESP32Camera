@@ -73,11 +73,12 @@ class Fifo
       digitalWrite(RCK, 1);
       digitalWrite(RCK, 1); //just for the delay
       digitalWrite(RCK, 0);
+      digitalWrite(RCK, 0); //needed if more skips in sequence
   }
   static void inline readBytes(unsigned char *buffer, int count)
   {
     for(int i = 0; i < count; i++)
-      readByte();
+      buffer[i] = readByte();
   }
 };
 
